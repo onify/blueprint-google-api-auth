@@ -1,0 +1,193 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:camunda="http://camunda.org/schema/1.0/bpmn" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bioc="http://bpmn.io/schema/bpmn/biocolor/1.0" id="Definitions_0sdny8d" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="4.5.0">
+  <bpmn:process id="blueprint-google-api-auth" name="Onify Blueprint: Authenticate against Google API" isExecutable="true">
+    <bpmn:startEvent id="start" name="Start">
+      <bpmn:outgoing>Flow_1if56ls</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_1if56ls" sourceRef="start" targetRef="settings" />
+    <bpmn:endEvent id="end" name="End">
+      <bpmn:incoming>Flow_055moge</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:scriptTask id="jwt" name="Generate signed JWT" scriptFormat="javascript" camunda:resultVariable="signedJWT">
+      <bpmn:incoming>Flow_0riv0em</bpmn:incoming>
+      <bpmn:outgoing>Flow_1oaj2n2</bpmn:outgoing>
+      <bpmn:script>var body = {
+    scope: 'https://www.googleapis.com/auth/admin.directory.user.readonly'
+};
+
+var claimSet = {
+    issuer: environment.output.googleSettings._google_serviceaccount_email,
+    subject: environment.output.googleSettings._google_serviceaccount_impersonate_email,
+    audience: 'https://oauth2.googleapis.com/token',
+    expiresIn: 60*60,
+    algorithm : 'RS256'
+};
+
+var pkey = environment.output.googleSettings._google_serviceaccount_privatekey.replace(/\\n/g, '\n');
+var signedJWT = jwt.sign(body,pkey,claimSet);
+next (null, signedJWT);</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:sequenceFlow id="Flow_1oaj2n2" sourceRef="jwt" targetRef="token" />
+    <bpmn:sequenceFlow id="Flow_1tzk6fw" sourceRef="token" targetRef="api-request" />
+    <bpmn:serviceTask id="token" name="Generate Google access token">
+      <bpmn:extensionElements>
+        <camunda:connector>
+          <camunda:inputOutput>
+            <camunda:inputParameter name="responseType">json</camunda:inputParameter>
+            <camunda:inputParameter name="method">POST</camunda:inputParameter>
+            <camunda:inputParameter name="body">grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&amp;assertion=${environment.output.signedJWT}</camunda:inputParameter>
+            <camunda:inputParameter name="headers">
+              <camunda:map>
+                <camunda:entry key="Content-Type">application/x-www-form-urlencoded</camunda:entry>
+              </camunda:map>
+            </camunda:inputParameter>
+            <camunda:inputParameter name="url">https://oauth2.googleapis.com/token</camunda:inputParameter>
+            <camunda:outputParameter name="body">${body}</camunda:outputParameter>
+          </camunda:inputOutput>
+          <camunda:connectorId>httpRequest</camunda:connectorId>
+        </camunda:connector>
+        <camunda:inputOutput>
+          <camunda:outputParameter name="accessToken">${content.output.body.access_token}</camunda:outputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1oaj2n2</bpmn:incoming>
+      <bpmn:outgoing>Flow_1tzk6fw</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="api-request" name="API request">
+      <bpmn:extensionElements>
+        <camunda:connector>
+          <camunda:inputOutput>
+            <camunda:inputParameter name="responseType">json</camunda:inputParameter>
+            <camunda:inputParameter name="headers">
+              <camunda:map>
+                <camunda:entry key="Authorization">Bearer ${environment.output.accessToken}</camunda:entry>
+              </camunda:map>
+            </camunda:inputParameter>
+            <camunda:inputParameter name="url">https://admin.googleapis.com/admin/directory/v1/users?customer=${environment.output.googleSettings._google_customerid}</camunda:inputParameter>
+            <camunda:outputParameter name="body">${body}</camunda:outputParameter>
+          </camunda:inputOutput>
+          <camunda:connectorId>httpRequest</camunda:connectorId>
+        </camunda:connector>
+        <camunda:inputOutput>
+          <camunda:outputParameter name="googleUsers">${content.output.body}</camunda:outputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1tzk6fw</bpmn:incoming>
+      <bpmn:outgoing>Flow_055moge</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="settings" name="Get Google settings">
+      <bpmn:extensionElements>
+        <camunda:connector>
+          <camunda:inputOutput>
+            <camunda:inputParameter name="query">
+              <camunda:map>
+                <camunda:entry key="tag">google</camunda:entry>
+              </camunda:map>
+            </camunda:inputParameter>
+            <camunda:inputParameter name="url">/my/config/settings</camunda:inputParameter>
+          </camunda:inputOutput>
+          <camunda:connectorId>onifyApiRequest</camunda:connectorId>
+        </camunda:connector>
+        <camunda:inputOutput>
+          <camunda:outputParameter name="googleSettings">${content.output.body}</camunda:outputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_1if56ls</bpmn:incoming>
+      <bpmn:outgoing>Flow_0riv0em</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_0riv0em" sourceRef="settings" targetRef="jwt" />
+    <bpmn:sequenceFlow id="Flow_055moge" sourceRef="api-request" targetRef="end" />
+    <bpmn:textAnnotation id="TextAnnotation_09b86tr">
+      <bpmn:text>Get Google service account settings from Onify API</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:association id="Association_03q03nv" sourceRef="settings" targetRef="TextAnnotation_09b86tr" />
+    <bpmn:textAnnotation id="TextAnnotation_0j8gdcc">
+      <bpmn:text>Generate claim and generate JWT</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:association id="Association_0pp1ogn" sourceRef="jwt" targetRef="TextAnnotation_0j8gdcc" />
+    <bpmn:textAnnotation id="TextAnnotation_14qrud4">
+      <bpmn:text>Generate access token with ttl 60 min</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:association id="Association_1tpuxgn" sourceRef="token" targetRef="TextAnnotation_14qrud4" />
+    <bpmn:textAnnotation id="TextAnnotation_1lf8ifh">
+      <bpmn:text>Replace with API request !!!</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:association id="Association_1vuebd0" sourceRef="api-request" targetRef="TextAnnotation_1lf8ifh" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="blueprint-google-api-auth">
+      <bpmndi:BPMNEdge id="Flow_0riv0em_di" bpmnElement="Flow_0riv0em">
+        <di:waypoint x="340" y="247" />
+        <di:waypoint x="391" y="247" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1tzk6fw_di" bpmnElement="Flow_1tzk6fw">
+        <di:waypoint x="640" y="247" />
+        <di:waypoint x="700" y="247" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1oaj2n2_di" bpmnElement="Flow_1oaj2n2">
+        <di:waypoint x="491" y="247" />
+        <di:waypoint x="540" y="247" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1if56ls_di" bpmnElement="Flow_1if56ls">
+        <di:waypoint x="188" y="247" />
+        <di:waypoint x="240" y="247" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_055moge_di" bpmnElement="Flow_055moge">
+        <di:waypoint x="800" y="247" />
+        <di:waypoint x="882" y="247" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="_BPMNShape_StartEvent_2" bpmnElement="start">
+        <dc:Bounds x="152" y="229" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="158" y="272" width="24" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_19kuezu_di" bpmnElement="jwt">
+        <dc:Bounds x="391" y="207" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_1mbrrq0_di" bpmnElement="token">
+        <dc:Bounds x="540" y="207" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_1so3s6l_di" bpmnElement="api-request" bioc:stroke="rgb(251, 140, 0)" bioc:fill="rgb(255, 224, 178)">
+        <dc:Bounds x="700" y="207" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_0yibfwb_di" bpmnElement="settings">
+        <dc:Bounds x="240" y="207" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TextAnnotation_09b86tr_di" bpmnElement="TextAnnotation_09b86tr">
+        <dc:Bounds x="300" y="96" width="160" height="44" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TextAnnotation_0j8gdcc_di" bpmnElement="TextAnnotation_0j8gdcc">
+        <dc:Bounds x="440" y="340" width="130" height="40" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TextAnnotation_14qrud4_di" bpmnElement="TextAnnotation_14qrud4">
+        <dc:Bounds x="640" y="120" width="140" height="40" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TextAnnotation_1lf8ifh_di" bpmnElement="TextAnnotation_1lf8ifh">
+        <dc:Bounds x="760" y="326" width="170" height="26" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_10fxhsy_di" bpmnElement="end">
+        <dc:Bounds x="882" y="229" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="890" y="272" width="20" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Association_03q03nv_di" bpmnElement="Association_03q03nv">
+        <di:waypoint x="308" y="207" />
+        <di:waypoint x="337" y="140" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Association_0pp1ogn_di" bpmnElement="Association_0pp1ogn">
+        <di:waypoint x="459" y="287" />
+        <di:waypoint x="483" y="340" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Association_1tpuxgn_di" bpmnElement="Association_1tpuxgn">
+        <di:waypoint x="626" y="207" />
+        <di:waypoint x="668" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Association_1vuebd0_di" bpmnElement="Association_1vuebd0">
+        <di:waypoint x="776" y="287" />
+        <di:waypoint x="800" y="326" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
