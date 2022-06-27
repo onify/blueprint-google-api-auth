@@ -7,7 +7,7 @@
 
 This Blueprint shows how to authenticate with Google API using a service account. From there you can then access anything via the Googles API like users, chromebooks, resources or mobile devices.
 
-![alt text](flow.png "Flow")
+![Onify Blueprint: Authenticate against Google API with service account](blueprint.jpg "Blueprint")
 
 ## Requirements
 
